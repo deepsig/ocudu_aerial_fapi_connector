@@ -345,6 +345,9 @@ Important caveats before using it:
 - NVIDIA's documented O-RU bring-up flow assumes a fronthaul-capable Aerial
   host configuration and vendor-specific YAML, for example
   `cuphycontroller_P5G_FXN_GH.yaml` in current Aerial OTA docs.
+- NVIDIA's current feature documentation lists the WNC `R1220` as a tested
+  n77/n78/n79 indoor O-RU, but in a `4T4R`, `100 MHz`, `30 kHz SCS`, `TDD 7.2`
+  configuration rather than a special single-layer RU profile.
 - GB10/DGX Spark does **not** provide the same GPUDirect RDMA profile as the
   Grace Hopper systems NVIDIA documents for full fronthaul deployment, so treat
   the procedure below as an experimental example only.
@@ -357,6 +360,8 @@ Reference source for the shape of this configuration:
   <https://docs.nvidia.com/aerial/aerial-ran-colab-ota/current/text/installation_guide/validate_setup.html>
 - NVIDIA cuBB quickstart note for O-RU-specific YAML selection:
   <https://docs.nvidia.com/aerial/cuda-accelerated-ran/25-2/aerial_cubb/cubb_quickstart/running_cubb-end-to-end.html>
+- NVIDIA feature matrix listing tested O-RUs including WNC `R1220`:
+  <https://docs.nvidia.com/aerial/cuda-accelerated-ran/latest/cubb/features_and_arch/features_for_5g_gnb.html>
 
 Example flow inside the container:
 
@@ -368,8 +373,12 @@ mkdir -p /dev/hugepages && mount -t hugetlbfs nodev /dev/hugepages
 CONFIG_DIR=/opt/nvidia/aerial/cuPHY-CP/cuphycontroller/config
 PROFILE=P5G_GH
 
-# If your Aerial build includes a vendor-specific FH/O-RU profile such as
-# cuphycontroller_P5G_FXN_GH.yaml, start from that instead of P5G_GH.
+# WNC R1220-style starting point:
+# keep the standard 100 MHz n78/TDD sector profile in Aerial, and if your Aerial
+# build ships a vendor-specific WNC/FH YAML, start from that instead of P5G_GH.
+# The RU remains a 4T4R fronthaul endpoint; "single-layer" behavior would be
+# constrained on the OCUDU traffic/scheduler side rather than by changing the RU
+# profile itself.
 CONFIG=$CONFIG_DIR/cuphycontroller_${PROFILE}.yaml
 
 # Replace these with your actual lab values.
