@@ -1,0 +1,51 @@
+# Copyright (c) 2026 DeepSig Inc.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+aerial_sdk_version: 25-3-cubb
+l2adapter_filename: l2_adapter_config_loopback.yaml
+aerial_metrics_backend_address: 127.0.0.1:8081
+low_priority_core: 4
+enable_ptp_svc_monitoring: 0
+ptp_rms_threshold: 20
+nic_tput_alert_threshold_mbps: 0
+
+cuphydriver_config:
+  standalone: 1
+  validation: 0
+  num_slots: 8
+  log_level: DBG
+  profiler_sec: 0
+  dpdk_thread: -1
+  dpdk_verbose_logs: 0
+  dpdk_file_prefix: cuphycontroller
+  use_green_contexts: 0
+  use_batched_memcpy: 0
+  mps_sm_pusch: 12
+  mps_sm_pucch: 2
+  mps_sm_prach: 2
+  mps_sm_ul_order: 4
+  mps_sm_pdsch: 12
+  mps_sm_pdcch: 4
+  mps_sm_pbch: 2
+  mps_sm_gpu_comms: 4
+  mps_sm_srs: 4
+  pdsch_fallback: 0
+  nics: []
+  gpus:
+    - 0
+  workers_ul: [2, 3]
+  workers_dl: [4, 5, 6]
+  debug_worker: -1
+  workers_sched_priority: 95
+  prometheus_thread: -1
+  enable_ul_cuphy_graphs: 1
+  enable_dl_cuphy_graphs: 1
+  enable_h2d_copy_thread: 0
+  cells:
+    - cell_id: 0
+      num_rx_ant: 2
+      num_tx_ant: 2
+      bwp:
+        scs: 30
+        num_prbs: 273
+      flows: {}

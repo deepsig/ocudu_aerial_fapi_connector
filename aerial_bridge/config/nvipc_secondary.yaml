@@ -1,0 +1,17 @@
+# Copyright (c) 2026 DeepSig Inc.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+#
+# nvIPC secondary (MAC-side) configuration for the Aerial FAPI bridge.
+# Only transport type and prefix are required for a secondary instance;
+# the primary (L1) saves the full config to shared memory.
+---
+transport:
+  type: shm
+  shm_config:
+    prefix: nvipc
+
+nvipc_log:
+  log_level: 3
+  fmt_log_path: "/var/log/aerial"
+  fmt_log_name: "nvipc_bridge"
+  fmt_log_max_size: 128

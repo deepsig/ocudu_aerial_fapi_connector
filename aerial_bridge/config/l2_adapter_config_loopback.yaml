@@ -1,0 +1,66 @@
+# Copyright (c) 2026 DeepSig Inc.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+#
+# L2 adapter config for loopback testing.
+# Single cell, SHM transport, nvIPC for bridge communication.
+---
+aerial_sdk_version: 25-3-cubb
+msg_type: scf_5g_fapi
+phy_class: scf_5g_fapi
+slot_advance: 3
+tick_generator_mode: 1
+allowed_fapi_latency: 0
+allowed_tick_error: 10
+
+timer_thread_config:
+  name: timer_thread
+  cpu_affinity: 6
+  sched_priority: 99
+
+message_thread_config:
+  name: msg_processing
+  cpu_affinity: 6
+  sched_priority: 95
+
+mu_highest: 1
+dl_tb_loc: 1
+
+instances:
+  -
+    name: scf_gnb_configure_module_0_instance_0
+    prach_ta_offset_usec: 2.5
+
+transport:
+  type: shm
+  shm_config:
+    primary: 1
+    prefix: nvipc
+    cuda_device_id: 0
+    ring_len: 8192
+    mempool_size:
+      cpu_msg:
+        buf_size: 15000
+        pool_len: 4096
+      cpu_data:
+        buf_size: 576000
+        pool_len: 1024
+      cpu_large:
+        buf_size: 4096000
+        pool_len: 64
+      cuda_data:
+        buf_size: 307200
+        pool_len: 0
+      gpu_data:
+        buf_size: 576000
+        pool_len: 0
+  app_config:
+    grpc_forward: 0
+    debug_timing: 0
+    pcap_enable: 0
+
+cell_group: 1
+prepone_h2d_copy: 0
+enable_precoding: 0
+enable_beam_forming: 0
+duplicate_config_all_cells: 0
+enableTickDynamicSfnSlot: 1

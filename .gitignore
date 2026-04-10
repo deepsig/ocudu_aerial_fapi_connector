@@ -1,0 +1,14 @@
+# Copyright (c) 2026 DeepSig Inc.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+repos/
+build/
+*.o
+*.a
+*.so
+*.swp
+*~
+.vscode/
+.idea/
+__pycache__/
+*.pyc

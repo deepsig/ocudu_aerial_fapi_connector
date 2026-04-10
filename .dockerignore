@@ -1,0 +1,7 @@
+# Copyright (c) 2026 DeepSig Inc.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+.git
+repos/
+README.md
+aerial_bridge/build/
