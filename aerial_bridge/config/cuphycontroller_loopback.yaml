@@ -1,7 +1,7 @@
 # Copyright (c) 2026 DeepSig Inc.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
-aerial_sdk_version: 25-3-cubb
+aerial_sdk_version: 26-1-cubb
 l2adapter_filename: l2_adapter_config_loopback.yaml
 aerial_metrics_backend_address: 127.0.0.1:8081
 low_priority_core: 4

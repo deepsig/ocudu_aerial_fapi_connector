@@ -248,6 +248,10 @@ static std::atomic<unsigned> g_malformed_uci_log_count{0};
 struct bridge_runtime_metrics {
   std::atomic<uint64_t> tx_data_reqs{0};
   std::atomic<uint64_t> tx_data_bytes{0};
+  std::atomic<uint64_t> ul_pusch_pdus{0};
+  std::atomic<uint64_t> ul_pucch_pdus{0};
+  std::atomic<uint64_t> ul_prach_pdus{0};
+  std::atomic<uint64_t> ul_srs_pdus{0};
   std::atomic<uint64_t> crc_total{0};
   std::atomic<uint64_t> crc_ok{0};
   std::atomic<uint64_t> crc_fail{0};
@@ -364,6 +368,10 @@ void reset_bridge_runtime_metrics()
 {
   reset_runtime_metric(g_bridge_runtime_metrics.tx_data_reqs);
   reset_runtime_metric(g_bridge_runtime_metrics.tx_data_bytes);
+  reset_runtime_metric(g_bridge_runtime_metrics.ul_pusch_pdus);
+  reset_runtime_metric(g_bridge_runtime_metrics.ul_pucch_pdus);
+  reset_runtime_metric(g_bridge_runtime_metrics.ul_prach_pdus);
+  reset_runtime_metric(g_bridge_runtime_metrics.ul_srs_pdus);
   reset_runtime_metric(g_bridge_runtime_metrics.crc_total);
   reset_runtime_metric(g_bridge_runtime_metrics.crc_ok);
   reset_runtime_metric(g_bridge_runtime_metrics.crc_fail);
@@ -381,12 +389,17 @@ void dump_bridge_runtime_metrics()
 {
   std::fprintf(stdout,
                "[aerial_bridge][summary] tx_data_reqs=%llu tx_data_bytes=%llu "
+               "ul_pusch_pdus=%llu ul_pucch_pdus=%llu ul_prach_pdus=%llu ul_srs_pdus=%llu "
                "crc_total=%llu crc_ok=%llu crc_fail=%llu "
                "rx_data_pdus=%llu rx_data_bytes=%llu "
                "uci_total=%llu uci_pusch=%llu uci_pucch01=%llu uci_pucch234=%llu "
                "rach_total=%llu srs_total=%llu\n",
                static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.tx_data_reqs)),
                static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.tx_data_bytes)),
+               static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.ul_pusch_pdus)),
+               static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.ul_pucch_pdus)),
+               static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.ul_prach_pdus)),
+               static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.ul_srs_pdus)),
                static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.crc_total)),
                static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.crc_ok)),
                static_cast<unsigned long long>(load_runtime_metric(g_bridge_runtime_metrics.crc_fail)),
@@ -1175,9 +1188,11 @@ int serialize_ul_tti_request(const ocudu::fapi::ul_tti_request& msg,
       pdu_info.pdu_size = next - reinterpret_cast<uint8_t*>(&pdu_info);
       pdu_size = pdu_info.pdu_size;
       req.rach_present = 1;
+      g_bridge_runtime_metrics.ul_prach_pdus.fetch_add(1, std::memory_order_relaxed);
     } else if (const auto* pusch = std::get_if<ocudu::fapi::ul_pusch_pdu>(&pdu_wrapper.pdu)) {
       pdu_size = serialize_pusch_pdu(*pusch, buf + pdu_offset);
       req.num_ulsch++;
+      g_bridge_runtime_metrics.ul_pusch_pdus.fetch_add(1, std::memory_order_relaxed);
       const unsigned harq_bits = pusch->pusch_uci.has_value() ? static_cast<unsigned>(pusch->pusch_uci->harq_ack_bit.value()) : 0U;
       const unsigned csi1_bits = pusch->pusch_uci.has_value() ? static_cast<unsigned>(pusch->pusch_uci->csi_part1_bit.value()) : 0U;
       log_outgoing_ul_pdu("PUSCH",
@@ -1198,6 +1213,7 @@ int serialize_ul_tti_request(const ocudu::fapi::ul_tti_request& msg,
     } else if (const auto* pucch = std::get_if<ocudu::fapi::ul_pucch_pdu>(&pdu_wrapper.pdu)) {
       pdu_size = serialize_pucch_pdu(*pucch, buf + pdu_offset);
       req.num_ulcch++;
+      g_bridge_runtime_metrics.ul_pucch_pdus.fetch_add(1, std::memory_order_relaxed);
       unsigned format_type = 0;
       unsigned harq_bits   = 0;
       unsigned sr_bits     = 0;
@@ -1241,6 +1257,7 @@ int serialize_ul_tti_request(const ocudu::fapi::ul_tti_request& msg,
                           csi1_bits);
     } else if (const auto* srs = std::get_if<ocudu::fapi::ul_srs_pdu>(&pdu_wrapper.pdu)) {
       pdu_size = serialize_srs_pdu(*srs, buf + pdu_offset);
+      g_bridge_runtime_metrics.ul_srs_pdus.fetch_add(1, std::memory_order_relaxed);
     }
 
     if (pdu_size > 0) {

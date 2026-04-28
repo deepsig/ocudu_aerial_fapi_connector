@@ -218,11 +218,18 @@ def main() -> int:
             "PDCCH DL aggregate pool depth",
         )
 
-    nic_failure_guard = """        if (fh_proxy->registerNic(nic_cfg, ctx_cfg.gpu_id))
+    nic_failure_guards = [
+        """        if (fh_proxy->registerNic(nic_cfg, ctx_cfg.gpu_id))
         {
             fprintf(stderr, "WARNING: NIC registration failed (GPUDirect RDMA not available). Continuing without fronthaul.\\n");
             break; // Skip remaining NICs
-        }"""
+        }""",
+        """        if (fh_proxy->registerNic(nic_cfg, ctx_cfg.gpu_id))
+        {
+            fprintf(stderr, "WARNING: NIC registration failed (GPUDirect RDMA not available). Continuing without fronthaul.\\n");
+            break; // Skip remaining NICs — fronthaul disabled
+        }""",
+    ]
     nic_failure_guard_replacement = """        if (fh_proxy->registerNic(nic_cfg, ctx_cfg.gpu_id))
         {
             fprintf(stderr, "WARNING: NIC registration failed (GPUDirect RDMA not available). Continuing without fronthaul.\\n");
@@ -231,15 +238,17 @@ def main() -> int:
             enable_cpu_init_comms = 0;
             break; // Skip remaining NICs — fronthaul disabled
         }"""
-    while nic_failure_guard in context_text:
-        context_text = replace_once(
-            context_text,
-            nic_failure_guard,
-            nic_failure_guard_replacement,
-            "registerNic failure downgrade",
-        )
+    for nic_failure_guard in nic_failure_guards:
+        while nic_failure_guard in context_text:
+            context_text = replace_once(
+                context_text,
+                nic_failure_guard,
+                nic_failure_guard_replacement,
+                "registerNic failure downgrade",
+            )
 
-    nic_loop = """    for (auto nic_cfg : ctx_cfg.nic_configs) {
+    nic_loops = [
+        """    for (auto nic_cfg : ctx_cfg.nic_configs) {
         if (fh_proxy->registerNic(nic_cfg, ctx_cfg.gpu_id))
         {
             fprintf(stderr, "WARNING: NIC registration failed (GPUDirect RDMA not available). Continuing without fronthaul.\\n");
@@ -248,7 +257,15 @@ def main() -> int:
             enable_cpu_init_comms = 0;
             break; // Skip remaining NICs — fronthaul disabled
         }
-    }"""
+    }""",
+        """    for (auto nic_cfg : ctx_cfg.nic_configs) {
+        if (fh_proxy->registerNic(nic_cfg, ctx_cfg.gpu_id))
+        {
+            fprintf(stderr, "WARNING: NIC registration failed (GPUDirect RDMA not available). Continuing without fronthaul.\\n");
+            break; // Skip remaining NICs — fronthaul disabled
+        }
+    }""",
+    ]
     nic_loop_replacement = """    const bool skip_nic_reg = (std::getenv("AERIAL_SKIP_NIC_REG") != nullptr) &&
                               (std::strcmp(std::getenv("AERIAL_SKIP_NIC_REG"), "0") != 0);
     if(skip_nic_reg)
@@ -271,13 +288,14 @@ def main() -> int:
             }
         }
     }"""
-    while nic_loop in context_text:
-        context_text = replace_once(
-            context_text,
-            nic_loop,
-            nic_loop_replacement,
-            "skip NIC registration env guard",
-        )
+    for nic_loop in nic_loops:
+        while nic_loop in context_text:
+            context_text = replace_once(
+                context_text,
+                nic_loop,
+                nic_loop_replacement,
+                "skip NIC registration env guard",
+            )
 
     if "nic_map.empty() ? aerial_fh::BfwCplaneChainingMode::NO_CHAINING : bfw_c_plane_chaining_mode" not in fh_hpp_text:
         fh_hpp_text = replace_once(
@@ -322,6 +340,97 @@ def main() -> int:
     int           ret   = 0;
 """,
             "registerMem no-op without NICs",
+        )
+
+    if "No-peer FAPI-only mode has no FH C-plane peer state to populate." not in fh_cpp_text:
+        fh_cpp_text = replace_once(
+            fh_cpp_text,
+            """int FhProxy::prepareCPlaneInfo(
+    uint32_t cell_id,
+    ru_type ru,
+    peer_id_t peer_id,
+    uint16_t dl_comp_meth,
+    t_ns start_tx_time,
+    uint64_t tx_cell_start_ofs_ns,
+    oran_pkt_dir direction,
+    const slot_command_api::oran_slot_ind &slot_indication,
+    slot_command_api::slot_info_t &slot_info,
+    uint16_t time_offset,
+    int16_t dyn_beam_id_offset,
+    uint8_t frame_structure,
+    uint16_t cp_length,
+    uint8_t** bfw_header,
+    t_ns start_ch_task_time,
+    int  prevSlotBfwCompStatus,
+    ti_subtask_info &ti_info
+    )
+{
+    //NVLOGC_FMT(TAG, "sendCPlane: oframe_id_ {} osfid_ {} oslotid_ {}  dyn_beam_id_offset {}", slot_indication.oframe_id_, slot_indication.osfid_, slot_indication.oslotid_, dyn_beam_id_offset);
+    int ret;
+""",
+            """int FhProxy::prepareCPlaneInfo(
+    uint32_t cell_id,
+    ru_type ru,
+    peer_id_t peer_id,
+    uint16_t dl_comp_meth,
+    t_ns start_tx_time,
+    uint64_t tx_cell_start_ofs_ns,
+    oran_pkt_dir direction,
+    const slot_command_api::oran_slot_ind &slot_indication,
+    slot_command_api::slot_info_t &slot_info,
+    uint16_t time_offset,
+    int16_t dyn_beam_id_offset,
+    uint8_t frame_structure,
+    uint16_t cp_length,
+    uint8_t** bfw_header,
+    t_ns start_ch_task_time,
+    int  prevSlotBfwCompStatus,
+    ti_subtask_info &ti_info
+    )
+{
+    // No-peer FAPI-only mode has no FH C-plane peer state to populate.
+    if(peer_map.empty())
+    {
+        slot_info.section_id_ready.store(true);
+        return SEND_CPLANE_NO_ERROR;
+    }
+
+    //NVLOGC_FMT(TAG, "sendCPlane: oframe_id_ {} osfid_ {} oslotid_ {}  dyn_beam_id_offset {}", slot_indication.oframe_id_, slot_indication.osfid_, slot_indication.oslotid_, dyn_beam_id_offset);
+    int ret;
+""",
+            "prepareCPlaneInfo no-op without peers",
+        )
+
+    if "No-peer FAPI-only mode has nothing to enqueue to FH." not in fh_cpp_text:
+        fh_cpp_text = replace_once(
+            fh_cpp_text,
+            """int FhProxy::sendCPlaneMMIMO(
+    bool is_bfw,
+    uint32_t cell_id,
+    peer_id_t peer_id,
+    oran_pkt_dir direction,
+    ti_subtask_info &ti_info)
+{
+
+    int                  buf_idx        = (direction == DIRECTION_DOWNLINK) ? 0 : 1;
+""",
+            """int FhProxy::sendCPlaneMMIMO(
+    bool is_bfw,
+    uint32_t cell_id,
+    peer_id_t peer_id,
+    oran_pkt_dir direction,
+    ti_subtask_info &ti_info)
+{
+
+    // No-peer FAPI-only mode has nothing to enqueue to FH.
+    if(peer_map.empty())
+    {
+        return SEND_CPLANE_NO_ERROR;
+    }
+
+    int                  buf_idx        = (direction == DIRECTION_DOWNLINK) ? 0 : 1;
+""",
+            "sendCPlaneMMIMO no-op without peers",
         )
 
     dl_task_count_replacement = """            dl_task_count = 0; // Recompute from the instantiated DL work for this slot.
@@ -693,6 +802,84 @@ exit_error:
             control_signal_old,
             control_signal_new,
             "control task signalCompletion slot-end signal",
+        )
+
+    debug_no_peer_guard_old = """    FhProxy*                                                                     fhproxy = pdctx->getFhProxy();
+    int                                                                          sfn = 0, slot = 0;
+    sfn = slot_map->getSlot3GPP().sfn_;
+    slot = slot_map->getSlot3GPP().slot_;
+"""
+    debug_no_peer_guard_new = """    FhProxy*                                                                     fhproxy = pdctx->getFhProxy();
+    int                                                                          sfn = 0, slot = 0;
+    sfn = slot_map->getSlot3GPP().sfn_;
+    slot = slot_map->getSlot3GPP().slot_;
+
+    if(!fhproxy || !fhproxy->hasRegisteredPeers())
+    {
+        ti.add("End Task");
+        return 0;
+    }
+"""
+    if "if(!fhproxy || !fhproxy->hasRegisteredPeers())" not in dl_task_cpp_text and debug_no_peer_guard_old in dl_task_cpp_text:
+        dl_task_cpp_text = replace_once(
+            dl_task_cpp_text,
+            debug_no_peer_guard_old,
+            debug_no_peer_guard_new,
+            "debug task no-peers guard",
+        )
+
+    cleanup_compression_wait_old = """    //Compression kernel and GPU Comms trigger kernel wait loops (Only if Debug worker is disabled)
+    if(first_dlbuf!=nullptr && !pdctx->debug_worker_enabled()){
+        if(first_dlbuf->waitCompressionStop() != 0)
+        {
+            NVLOGE_FMT(TAG, AERIAL_CUPHYDRV_API_EVENT, "Task DL {} Map {} got COMPRESSION DL wait error", task_num , slot_map->getId());
+            gpu_wait_error=true;
+            goto cleanup;
+        }
+
+        //Note: Since we have already waited on Slot Channel End, all prepare work has been submitted and we can access prepare events
+        for(int i = 0; i < MAX_NUM_OF_NIC_SUPPORTED; ++i)
+        {
+            if (prepare_tx_dlbuf_per_nic[i])
+            {
+                int failure = non_blocking_event_wait_with_timeout(prepare_tx_dlbuf_per_nic[i]->getTxEndEvt(),channel_wait_th);
+                if(failure != 0) {
+                    NVLOGE_FMT(TAG,AERIAL_CUPHYDRV_API_EVENT,"GPU Comms Trigger kernel wait ERROR on Map {}! Wait timeout after {} ns",slot_map->getId(),channel_wait_th.count());
+                    gpu_wait_error=true;
+                    goto cleanup;
+                }
+            }
+        }
+    }"""
+    cleanup_compression_wait_new = """    //Compression kernel and GPU Comms trigger kernel wait loops only when FH peers exist.
+    if(first_dlbuf!=nullptr && fhproxy && fhproxy->hasRegisteredPeers() && !pdctx->debug_worker_enabled()){
+        if(first_dlbuf->waitCompressionStop() != 0)
+        {
+            NVLOGE_FMT(TAG, AERIAL_CUPHYDRV_API_EVENT, "Task DL {} Map {} got COMPRESSION DL wait error", task_num , slot_map->getId());
+            gpu_wait_error=true;
+            goto cleanup;
+        }
+
+        //Note: Since we have already waited on Slot Channel End, all prepare work has been submitted and we can access prepare events
+        for(int i = 0; i < MAX_NUM_OF_NIC_SUPPORTED; ++i)
+        {
+            if (prepare_tx_dlbuf_per_nic[i])
+            {
+                int failure = non_blocking_event_wait_with_timeout(prepare_tx_dlbuf_per_nic[i]->getTxEndEvt(),channel_wait_th);
+                if(failure != 0) {
+                    NVLOGE_FMT(TAG,AERIAL_CUPHYDRV_API_EVENT,"GPU Comms Trigger kernel wait ERROR on Map {}! Wait timeout after {} ns",slot_map->getId(),channel_wait_th.count());
+                    gpu_wait_error=true;
+                    goto cleanup;
+                }
+            }
+        }
+    }"""
+    if "if(first_dlbuf!=nullptr && fhproxy && fhproxy->hasRegisteredPeers() && !pdctx->debug_worker_enabled()){" not in dl_task_cpp_text and cleanup_compression_wait_old in dl_task_cpp_text:
+        dl_task_cpp_text = replace_once(
+            dl_task_cpp_text,
+            cleanup_compression_wait_old,
+            cleanup_compression_wait_new,
+            "cleanup compression wait no-peers guard",
         )
 
     slot_map_release_old = """    bool dlBfwPrinted = false;

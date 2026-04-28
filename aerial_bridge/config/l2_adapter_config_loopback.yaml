@@ -4,7 +4,7 @@
 # L2 adapter config for loopback testing.
 # Single cell, SHM transport, nvIPC for bridge communication.
 ---
-aerial_sdk_version: 25-3-cubb
+aerial_sdk_version: 26-1-cubb
 msg_type: scf_5g_fapi
 phy_class: scf_5g_fapi
 slot_advance: 3

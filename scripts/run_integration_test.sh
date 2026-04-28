@@ -15,10 +15,31 @@
 set -euo pipefail
 
 DURATION=${1:-30}
-LOG_DIR="/tmp/aerial_integration"
+LOG_DIR="${AERIAL_LOG_DIR:-/tmp/aerial_integration}"
+AERIAL_CHARACTERIZE="${AERIAL_CHARACTERIZE:-1}"
 L1_PID=""
 GNB_PID=""
 mkdir -p "$LOG_DIR"
+
+wait_for_exit() {
+  local pid=$1
+  local loops=${2:-20}
+  local delay_s=${3:-0.1}
+  local i
+  for ((i = 0; i < loops; ++i)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep "$delay_s"
+  done
+  return 1
+}
+
+if [[ "${AERIAL_L1_PROFILE:-}" == "loopback" ]]; then
+  echo "ERROR: AERIAL_L1_PROFILE=loopback is Aerial standalone mode in 26.1 and does not expose the external SCF/FAPI path used by this integration test." >&2
+  echo "Use the default P5G_GH profile for OCUDU integration, or run /usr/local/bin/start_l1.sh loopback separately for standalone bring-up." >&2
+  exit 2
+fi
 
 echo "============================================"
 echo "  Aerial + OCUDU GPU L1 Integration Test"
@@ -30,8 +51,13 @@ echo ""
 cleanup() {
   echo ""
   echo "Stopping processes..."
-  [[ -n "${GNB_PID}" ]] && kill "$GNB_PID" 2>/dev/null || true
-  [[ -n "${L1_PID}" ]] && kill "$L1_PID" 2>/dev/null || true
+  if [[ -n "${GNB_PID}" ]]; then
+    kill "$GNB_PID" 2>/dev/null || true
+    wait_for_exit "$GNB_PID" 20 0.1 || true
+  fi
+  if [[ -n "${L1_PID}" ]]; then
+    kill "$L1_PID" 2>/dev/null || true
+  fi
   sleep 1
   [[ -n "${GNB_PID}" ]] && kill -9 "$GNB_PID" 2>/dev/null || true
   [[ -n "${L1_PID}" ]] && kill -9 "$L1_PID" 2>/dev/null || true
@@ -54,7 +80,12 @@ sed -i "s/mps_sm_srs: 16/mps_sm_srs: 4/" $CONFIG 2>/dev/null
 
 # ── Start Aerial L1 ─────────────────────────────────────────
 echo "[1/2] Starting Aerial GPU L1..."
-/usr/local/bin/start_l1.sh > "$LOG_DIR/l1.log" 2>&1 &
+L1_PROFILE="${AERIAL_L1_PROFILE:-}"
+if [[ -n "$L1_PROFILE" ]]; then
+  /usr/local/bin/start_l1.sh "$L1_PROFILE" > "$LOG_DIR/l1.log" 2>&1 &
+else
+  /usr/local/bin/start_l1.sh > "$LOG_DIR/l1.log" 2>&1 &
+fi
 L1_PID=$!
 echo "  PID: $L1_PID"
 
@@ -72,6 +103,7 @@ echo "  L1 running."
 # ── Create gnb config ────────────────────────────────────────
 GNB_CONFIG="$LOG_DIR/gnb_test.yml"
 AUTO_ACK_DELAY="${AERIAL_TESTMODE_AUTO_ACK_DELAY:-}"
+RX_CPU_CORE="${AERIAL_RX_CPU_CORE:-13}"
 cat > "$GNB_CONFIG" <<YAML
 # OCUDU gnb config for Aerial GPU L1 integration test
 # n78 TDD, 100MHz, 30kHz SCS, 2T2R — matches P5G_GH L1 config
@@ -107,7 +139,7 @@ test_mode:
 $(if [[ -n "$AUTO_ACK_DELAY" ]]; then printf '    auto_ack_indication_delay: %s\n' "$AUTO_ACK_DELAY"; fi)
 
 log:
-  filename: /tmp/aerial_integration/gnb.log
+  filename: $LOG_DIR/gnb.log
   all_level: warning
   fapi_level: info
 YAML
@@ -117,7 +149,7 @@ echo ""
 echo "[2/2] Starting OCUDU gnb (test mode)..."
 cd /opt/ocudu/build/apps/gnb
 ./gnb -c "$GNB_CONFIG" \
-  aerial --nvipc_prefix nvipc --rx_priority 90 --numerology 1 \
+  aerial --nvipc_prefix nvipc --rx_cpu_core "$RX_CPU_CORE" --rx_priority 90 --numerology 1 \
   > "$LOG_DIR/gnb_stdout.log" 2>&1 &
 GNB_PID=$!
 echo "  PID: $GNB_PID"
@@ -163,3 +195,10 @@ echo ""
 echo "  L1 log:  $LOG_DIR/l1.log"
 echo "  gnb log: $LOG_DIR/gnb.log"
 echo "============================================"
+
+if [[ "$AERIAL_CHARACTERIZE" != "0" ]]; then
+  echo ""
+  python3 /opt/aerial_bridge/scripts/characterize_integration.py \
+    --log-dir "$LOG_DIR" \
+    --duration "$DURATION" || true
+fi

@@ -23,6 +23,18 @@ shared-memory transport.
 - Multi-cell / multi-sector support (Phase 4)
 - DPDK/DOCA transport (SHM only for now)
 
+### 1.3 Current Release Snapshot
+
+- Default upstream base is now Aerial `26.1.0`.
+- The validated local path is external SCF/FAPI over nvIPC with
+  `AERIAL_SKIP_NIC_REG=1` on DGX Spark GB10.
+- The current-tree local suite requires `--shm-size=16g`; without that, Aerial's
+  nvIPC SHM pools can fault during startup.
+- On the latest `26.1.0` suite run, `bridge_test` passes and full OCUDU
+  integration reaches sustained DL/UL scheduling with `ul_structural_sanity`
+  passing, and the tuned no-NIC launch path now reaches clean 20s local runtime
+  health in the default validation wrapper.
+
 ## 2. Architecture
 
 ```
@@ -222,7 +234,13 @@ Standard `gnb_split_6` YAML with cell parameters matching L1 capabilities.
 
 ## 6. Startup Sequence
 
-1. Start Aerial L1: `cuphycontroller_scf --config l1_config.yaml`
+1. Start Aerial L1:
+   - validated local path: `/usr/local/bin/start_l1.sh`
+   - this wrapper mounts hugepages if needed, applies GB10 SM clamps, disables
+     the unwanted `26.1.0` nvIPC PCAP defaults for the no-NIC path, and exports
+     `AERIAL_SKIP_NIC_REG=1` unless explicitly overridden
+   - when `AERIAL_SKIP_NIC_REG=0`, the wrapper keeps the GB10 SM clamps but
+     does not apply the no-NIC L2A timing overrides
    - L1 creates nvIPC primary instance, waits for secondary
 2. Start OCUDU: `gnb_split_6 -c gnb_config.yaml`
    - Plugin creates `aerial_fapi_adaptor`
@@ -258,20 +276,28 @@ in the OCUDU `gnb_split_6` build.
 - P5 request/response path used by the current OCUDU configuration
 - P7 request serialization for `DL_TTI`, `UL_TTI`, `UL_DCI`, and `TX_DATA`
 - indication parsing for `SLOT`, `CRC`, `RX_DATA`, `UCI`, `RACH`, and `SRS`
-- no-NIC runtime hardening required for GB10/Aerial `25.3.2`
+- remaining no-NIC runtime hardening retained on top of upstream Aerial `26.1.0`
+- GB10 launch/runtime hardening in the repo wrappers and Aerial patch overlay
 - characterization reporting for runtime health, message coverage, and channel coverage
 
 ### Validated In Current Release
 
-- stable no-NIC `10s`, `20s`, and `60s` OCUDU-to-Aerial reruns on GB10
-- sustained `PDSCH`, `PUSCH`, `PUCCH F0/F1`, `CRC`, `UCI`, and `RX_DATA` message flow
-- no slot-jump, queue-saturation, aggregate-exhaustion, or `Err.ind` failures in the latest reference reruns
+- `bridge_test` passes on `26.1.0` with external `CONFIG/START/SLOT_IND` flow
+- full OCUDU integration reaches sustained `PDSCH`, `PUSCH`, `PUCCH F0/F1`,
+  `CRC`, `UCI`, and `RX_DATA.indication` flow
+- the latest current-tree suite run shows `ul_structural_sanity=PASS`
+- no slot jumps, bridge CRC mismatches, or bridge UCI mismatches were seen in
+  the latest suite run
+- the latest local 20s suite rerun reaches clean runtime health on the tuned
+  no-NIC `26.1.0` path
 
 ### Remaining Release Gaps
 
+- longer-duration soak coverage on the no-NIC `26.1.0` path
 - dynamic derivation of the full FAPI config from OCUDU runtime config
-- explicit signoff for `PUCCH F2/F3/F4`, `PRACH`, and `SRS` in targeted runs
+- explicit signoff for `PUCCH F2/F3/F4` and `SRS` in targeted runs
 - true UL PHY-quality characterization with a real waveform source or explicit PHY loopback mode
+- radio-in-loop validation for the WNC / real O-RU path
 - broader recovery/soak automation for long-duration release testing
 
 ## 10. Testing Strategy
@@ -283,7 +309,8 @@ in the OCUDU `gnb_split_6` build.
 4. Logs show timing and message flow
 
 ### Full Integration
-1. Stable no-NIC FAPI handshake and slot flow
-2. Sustained scheduler-driven DL/UL traffic
-3. Metrics extraction via `scripts/characterize_integration.py`
-4. Targeted channel-specific reruns for remaining unexercised message types
+1. External FAPI smoke via `bridge_test`
+2. Full OCUDU test-mode rerun via `scripts/run_integration_test.sh`
+3. Coverage gate via `scripts/run_validation_suite.sh`
+4. Metrics extraction via `scripts/characterize_integration.py`
+5. Optional sibling PHY signoff via `scripts/run_waveform_validation.sh`

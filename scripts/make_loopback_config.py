@@ -22,6 +22,7 @@ def main() -> int:
     cfg = data["cuphydriver_config"]
 
     data["l2adapter_filename"] = "l2_adapter_config_loopback.yaml"
+    data["standalone_filename"] = "launch_pattern.yaml"
     data["aerial_metrics_backend_address"] = "127.0.0.1:8081"
     data["low_priority_core"] = 4
 

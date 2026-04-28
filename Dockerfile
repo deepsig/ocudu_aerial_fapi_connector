@@ -6,10 +6,10 @@
 # Base: Official Aerial NGC container (includes MathDx, DOCA,
 #       cuFFTdx, CLI11, fmt, WiseEnum, and all Aerial deps)
 # ============================================================
-FROM nvcr.io/nvidia/aerial/aerial-cuda-accelerated-ran:25-3-cubb
+FROM nvcr.io/nvidia/aerial/aerial-cuda-accelerated-ran:26-1-cubb
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG AERIAL_TAG=25.3.2
+ARG AERIAL_TAG=26.1.0
 ARG OCUDU_TAG=release_26_04
 
 LABEL maintainer="deepsig"
@@ -17,7 +17,7 @@ LABEL description="Combined build environment for NVIDIA Aerial and OCUDU"
 
 # ============================================================
 # Additional packages for OCUDU and Aerial source build
-# (NGC base already has: CUDA 12.9, DOCA 3.0, MathDx, CLI11,
+# (NGC base already has: CUDA 13.1, DOCA 3.2, MathDx, CLI11,
 #  fmt, WiseEnum, gsl-lite, ZMQ, sctp, protobuf, gRPC, etc.)
 # ============================================================
 USER root
@@ -180,21 +180,6 @@ RUN python3 /tmp/mps_single_ctx_fix.py /opt/nvidia/aerial/cuPHY-CP/cuphydriver/s
     cd /opt/nvidia/aerial/build && \
     bash -o pipefail -c 'make -j$(nproc) cuphycontroller_scf 2>&1 | tail -5'
 
-# Patch GDRcopy: make gdr_open non-fatal (sets init_gdr=false when gdrdrv unavailable)
-ARG CACHE_BUST_GDR=3
-COPY aerial_bridge/patches/gdrcopy_fix.py /tmp/gdrcopy_fix.py
-RUN python3 /tmp/gdrcopy_fix.py && \
-    cd /opt/nvidia/aerial/build && \
-    cmake .. -DCMAKE_TOOLCHAIN_FILE=cuPHY/cmake/toolchains/native -DBUILD_DOCS=OFF \
-    -DCMAKE_CUDA_ARCHITECTURES="80-real;90-real;120" > /dev/null 2>&1 && \
-    bash -o pipefail -c 'make -j$(nproc) cuphy cuphy_ldpc cuphydriver cuphycontroller_scf 2>&1 | tail -10'
-
-# Patch gpinned_buffer: cudaHostAlloc fallback when GDR handle is null (GB10 no P2P)
-COPY aerial_bridge/patches/gpinned_buffer_fix.py /tmp/gpinned_buffer_fix.py
-RUN python3 /tmp/gpinned_buffer_fix.py /opt/nvidia/aerial/cuPHY-CP/cuphydriver/include/gpudevice.hpp && \
-    cd /opt/nvidia/aerial/build && \
-    bash -o pipefail -c 'make -j$(nproc) cuphydriver cuphycontroller_scf l2_adapter_cuphycontroller_scf 2>&1 | tail -10'
-
 # Patch NIC registration: non-fatal when GPUDirect RDMA unavailable (GB10)
 COPY aerial_bridge/patches/nic_registration_fix.py /tmp/nic_registration_fix.py
 RUN python3 /tmp/nic_registration_fix.py /opt/nvidia/aerial/cuPHY-CP/cuphydriver/src/common/context.cpp && \
@@ -207,6 +192,12 @@ RUN python3 /tmp/gpu_comm_standalone_fix.py /opt/nvidia/aerial/cuPHY-CP/cuphydri
     cd /opt/nvidia/aerial/build && \
     bash -o pipefail -c 'make -j$(nproc) cuphydriver cuphycontroller_scf 2>&1 | tail -10'
 
+# Patch nvIPC host pinning: tolerate cudaHostRegister failure on GB10 SHM pools.
+COPY aerial_bridge/patches/nvipc_host_pinning_fix.py /tmp/nvipc_host_pinning_fix.py
+RUN python3 /tmp/nvipc_host_pinning_fix.py /opt/nvidia/aerial/cuPHY-CP/gt_common_libs/nvIPC/cuda/nv_ipc_cuda_utils.cu && \
+    cd /opt/nvidia/aerial/build && \
+    bash -o pipefail -c 'make -j$(nproc) nvipc cuphycontroller_scf 2>&1 | tail -10'
+
 # Patch L1 standalone mode: fix l1_staticBFWConfigured and l1_resetDBTStorage
 # to return 0 instead of -1 in the standalone else-branch.
 RUN FILE=/opt/nvidia/aerial/cuPHY-CP/cuphyl2adapter/lib/nvPHY/nv_phy_driver_proxy.cpp && \
@@ -215,6 +206,13 @@ RUN FILE=/opt/nvidia/aerial/cuPHY-CP/cuphyl2adapter/lib/nvPHY/nv_phy_driver_prox
     grep "patched for standalone" $FILE && \
     cd /opt/nvidia/aerial/build && \
     bash -o pipefail -c 'make -j$(nproc) l2_adapter_cuphycontroller_scf 2>&1 | tail -5'
+
+# Patch 26.1 standalone loopback startup: use standalone_filename when parsing
+# the launch-pattern YAML instead of the main cuphycontroller config path.
+COPY aerial_bridge/patches/standalone_filename_fix.py /tmp/standalone_filename_fix.py
+RUN python3 /tmp/standalone_filename_fix.py /opt/nvidia/aerial/cuPHY-CP/cuphycontroller/examples/cuphycontroller_scf.cpp && \
+    cd /opt/nvidia/aerial/build && \
+    bash -o pipefail -c 'make -j$(nproc) cuphycontroller_scf 2>&1 | tail -5'
 
 # Patch gnb to link against split_6 instead of split_dynamic, then rebuild
 RUN sed -i 's/ocudu_flexible_o_du_split_dynamic/ocudu_flexible_o_du_split_6/' \
@@ -225,9 +223,19 @@ RUN sed -i 's/ocudu_flexible_o_du_split_dynamic/ocudu_flexible_o_du_split_6/' \
 # ============================================================
 # Runtime scripts and default working directory
 # ============================================================
+RUN mkdir -p /opt/aerial_bridge/scripts
 COPY scripts/start_l1.sh /usr/local/bin/start_l1.sh
 COPY scripts/make_loopback_config.py /usr/local/bin/make_loopback_config.py
-RUN chmod +x /usr/local/bin/start_l1.sh /usr/local/bin/make_loopback_config.py
+COPY scripts/run_integration_test.sh /opt/aerial_bridge/scripts/run_integration_test.sh
+COPY scripts/run_validation_suite.sh /opt/aerial_bridge/scripts/run_validation_suite.sh
+COPY scripts/run_waveform_validation.sh /opt/aerial_bridge/scripts/run_waveform_validation.sh
+COPY scripts/check_waveform_assets.py /opt/aerial_bridge/scripts/check_waveform_assets.py
+COPY scripts/characterize_integration.py /opt/aerial_bridge/scripts/characterize_integration.py
+RUN chmod +x /usr/local/bin/start_l1.sh /usr/local/bin/make_loopback_config.py \
+    /opt/aerial_bridge/scripts/run_integration_test.sh \
+    /opt/aerial_bridge/scripts/run_validation_suite.sh \
+    /opt/aerial_bridge/scripts/run_waveform_validation.sh \
+    /opt/aerial_bridge/scripts/check_waveform_assets.py
 
 WORKDIR /workspace
 CMD ["/bin/bash"]
