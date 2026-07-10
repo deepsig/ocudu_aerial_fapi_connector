@@ -1,6 +1,24 @@
 <!-- Copyright (c) 2026 DeepSig Inc. -->
 <!-- SPDX-License-Identifier: BSD-3-Clause-Clear -->
 
+# End-of-Life Notice: This Repository Is No Longer Supported
+
+> **Status:** End of life / unsupported.
+>
+> This code is end of life and is no longer supported. NVIDIA has developed a
+> more mature and better-tested NVIDIA Aerial OCUDU FAPI Adapter, so we do
+> **not** recommend using this FAPI connector for GPU acceleration of OCUDU. We
+> will add a link to NVIDIA's adapter here as soon as one is available.
+>
+> For teams evaluating CUDA and NVIDIA GPU acceleration for OCUDU, we also
+> recommend considering the actively developed
+> [CUDA-accelerated OCUDU project](https://gitlab.com/ocudu/work_groups/wg1_hw_accel/cuda_accelerated_ocudu).
+> That project is community owned, accepts contributions from anyone, and is
+> being developed as a single accelerated OCUDU codebase with multiple
+> backends/accelerators. One goal of DeepSig's ongoing work there is to provide
+> fluid L1/L2/L3 dApp support and CUDA acceleration across layers without
+> requiring separate codebases.
+
 # OCUDU + Aerial: GPU-Accelerated 5G RAN on DGX Spark
 
 Docker-based build and integration environment that combines [OCUDU](https://gitlab.com/ocudu/ocudu)'s open-source L2/L3 stack with [NVIDIA Aerial](https://github.com/NVIDIA/aerial-cuda-accelerated-ran)'s GPU-accelerated L1 (cuPHY) via a custom FAPI bridge plugin. Developed and tested on the NVIDIA DGX Spark (GB10 Blackwell desktop GPU).
